@@ -44,11 +44,14 @@ input,select,textarea{width:100%;font:inherit;font-size:16px;padding:11px;border
 .two{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .empty{color:var(--mut);text-align:center;padding:28px 8px}
 nav{position:fixed;left:0;right:0;bottom:0;display:flex;background:var(--card);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0px)}
-nav button{flex:1;border:0;border-radius:0;background:none;padding:14px 2px;font-size:14px;color:var(--mut)}
+nav button{flex:1;border:0;border-radius:0;background:none;padding:14px 2px;font-size:13px;color:var(--mut)}
 nav button.on{color:var(--acc);font-weight:700}
 #toast{position:fixed;left:16px;right:16px;bottom:calc(76px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:12px 14px;border-radius:10px;font-size:14px;display:none;z-index:5}
 details{margin-top:18px}summary{padding:8px 0;color:var(--acc)}
 .hint{font-size:13px;color:var(--mut);margin:6px 0 0}
+.pr{display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-top:1px solid var(--line);font-variant-numeric:tabular-nums}
+.pr span:first-child{color:var(--mut);font-size:13px}
+.pr b{font-size:18px;white-space:nowrap}
 </style>
 </head>
 <body>
@@ -57,6 +60,7 @@ details{margin-top:18px}summary{padding:8px 0;color:var(--acc)}
 <nav>
 <button data-tab="hoy">Ruta de hoy</button>
 <button data-tab="cli">Clientes</button>
+<button data-tab="pre">Precios</button>
 <button data-tab="calc">Calculadora</button>
 <button data-tab="pap">Papelera</button>
 </nav>
@@ -156,8 +160,36 @@ function vPap(){
  o+=S.papelera.map(function(c){return"<div class=card><b>"+esc(c.nombre)+"</b><span style='display:block;color:var(--mut);font-size:14px'>"+esc(c.direccion)+"</span><div class=row><button class=p data-a=rest data-id="+c.id+">Restaurar</button><button class=dg data-a=fin data-id="+c.id+">Borrar para siempre</button></div></div>"}).join("");
  return o+"<button class='dg w' data-a=vaciar style='margin-top:10px'>Vaciar papelera</button>"}
 
+var P=null;
+function norm(s){return String(s==null?"":s).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"")}
+function prep(j){j.productos.forEach(function(p){p[4]=norm(p[0]+" "+p[1])});return j}
+function loadPrecios(){
+ try{var c=localStorage.getItem("preventa_precios_v1");if(c)P=prep(JSON.parse(c))}catch(e){}
+ fetch("precios.json?v="+Date.now()).then(function(r){if(!r.ok)throw 0;return r.json()}).then(function(j){
+  try{localStorage.setItem("preventa_precios_v1",JSON.stringify(j))}catch(e){}
+  P=prep(j);if(tab==="pre"&&!document.getElementById("pq").value)render();else if(tab==="pre")$("#pres").innerHTML=preRes()
+ }).catch(function(){})}
+function etq(i){var l=P.listas[i];return l.nombre+" · "+[l.lista,l.iva].filter(Boolean).join(", ")}
+function vPre(){
+ return"<h1>Precios</h1><label for=pq>Código o nombre del producto</label><input id=pq inputmode=search autocomplete=off placeholder='Ej: 1957 o bolsa polip 15x20' value='"+esc(window.pq||"")+"'><div id=pres>"+preRes()+"</div>"}
+function preRes(){
+ if(!P)return"<p class=empty>Cargando precios... Si no aparecen, revisá que el archivo precios.json esté subido a GitHub.</p>";
+ var t=norm(window.pq||"").trim();
+ if(!t)return"<p class=hint>Listas cargadas:</p>"+P.listas.map(function(l,i){var n=P.productos.filter(function(p){return p[3]===i}).length;return"<div class=card><b>"+esc(l.nombre)+"</b><span style='display:block;color:var(--mut);font-size:14px'>"+esc([l.lista,l.iva,l.fecha].filter(Boolean).join(" · "))+" · "+n+" productos</span></div>"}).join("");
+ var toks=t.split(/\s+/),map={},ord=[];
+ P.productos.forEach(function(p){
+  for(var i=0;i<toks.length;i++)if(p[4].indexOf(toks[i])<0)return;
+  var k=p[0]+"|"+p[1].toLowerCase();
+  if(!map[k]){map[k]={cod:p[0],nom:p[1],pr:[]};ord.push(map[k])}
+  map[k].pr.push([p[3],p[2]])});
+ if(!ord.length)return"<p class=empty>No se encontraron productos con eso.</p>";
+ if(toks.length===1&&/^\d+$/.test(toks[0]))ord.sort(function(a,b){return(b.cod===toks[0])-(a.cod===toks[0])});
+ var o="<p class=hint>"+ord.length+" producto"+(ord.length>1?"s":"")+(ord.length>40?" (se muestran los primeros 40, refiná la búsqueda)":"")+"</p>";
+ ord.slice(0,40).forEach(function(x){
+  o+="<div class=card><b>"+esc(x.nom)+"</b><span style='display:block;color:var(--mut);font-size:14px'>Código "+esc(x.cod)+"</span>"+x.pr.map(function(r){return"<div class=pr><span>"+esc(etq(r[0]))+"</span><b>"+fm(r[1])+"</b></div>"}).join("")+"</div>"});
+ return o}
 function render(){
- $("#view").innerHTML={hoy:vHoy,cli:vCli,calc:vCalc,pap:vPap}[tab]();
+ $("#view").innerHTML={hoy:vHoy,cli:vCli,pre:vPre,calc:vCalc,pap:vPap}[tab]();
  document.querySelectorAll("nav button").forEach(function(b){b.classList.toggle("on",b.dataset.tab===tab)});
  if(tab==="calc")calcOut()}
 function take(id){var i=S.clientes.findIndex(function(c){return c.id===id});return i<0?null:S.clientes.splice(i,1)[0]}
@@ -196,8 +228,10 @@ document.addEventListener("click",function(e){
 document.addEventListener("input",function(e){
  var t=e.target;
  if(t.id==="q"){q=t.value;$("#lista").innerHTML=lista()}
+ else if(t.id==="pq"){window.pq=t.value;$("#pres").innerHTML=preRes()}
  else if(t.dataset.f){var f=t.dataset.f;if(f==="p"||f==="c")C.lines[+t.dataset.i][f]=t.value;else C[f]=t.value;calcOut()}
 });
+loadPrecios();
 render();
 </script>
 </body>
