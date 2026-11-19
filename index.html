@@ -44,10 +44,11 @@ input,select,textarea{width:100%;font:inherit;font-size:16px;padding:11px;border
 .two{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .empty{color:var(--mut);text-align:center;padding:28px 8px}
 nav{position:fixed;left:0;right:0;bottom:0;display:flex;background:var(--card);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0px)}
-nav button{flex:1;border:0;border-radius:0;background:none;padding:14px 2px;font-size:13px;color:var(--mut)}
+nav button{flex:1;border:0;border-radius:0;background:none;padding:14px 0;font-size:12px;color:var(--mut)}
 nav button.on{color:var(--acc);font-weight:700}
 #toast{position:fixed;left:16px;right:16px;bottom:calc(76px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:12px 14px;border-radius:10px;font-size:14px;display:none;z-index:5}
 details{margin-top:18px}summary{padding:8px 0;color:var(--acc)}
+.btn.p{background:var(--acc);color:var(--accT);border-color:var(--acc);font-weight:600}
 .hint{font-size:13px;color:var(--mut);margin:6px 0 0}
 .pr{display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-top:1px solid var(--line);font-variant-numeric:tabular-nums}
 .pr span:first-child{color:var(--mut);font-size:13px}
@@ -58,10 +59,11 @@ details{margin-top:18px}summary{padding:8px 0;color:var(--acc)}
 <main id="view"></main>
 <div id="toast"></div>
 <nav>
-<button data-tab="hoy">Ruta de hoy</button>
+<button data-tab="hoy">Ruta</button>
 <button data-tab="cli">Clientes</button>
 <button data-tab="pre">Precios</button>
-<button data-tab="calc">Calculadora</button>
+<button data-tab="ped">Pedido</button>
+<button data-tab="ven">Ventas</button>
 <button data-tab="pap">Papelera</button>
 </nav>
 <script>
@@ -69,11 +71,11 @@ var K="preventa_zarate_v1",BASE=[-34.0971,-59.0282];
 var DIAS=["domingo","lunes","martes","miercoles","jueves","viernes","sabado"];
 var S=load(),tab="hoy",editId=null,showForm=false,q="";
 var dia=(function(){var d=DIAS[new Date().getDay()];return DIAS.indexOf(d)%6===0?"lunes":d})();
-var C={lines:[{p:"",c:""}],d:"",m:"5"};
+S.ventas=S.ventas||[];var VM=(function(){var d=new Date();return d.getFullYear()*12+d.getMonth()})(),vsel=null;
 function load(){try{var r=localStorage.getItem(K);if(r)return JSON.parse(r)}catch(e){}return{clientes:[],papelera:[],hoy:{f:"",v:[],s:[]},pos:null}}
 function save(){try{localStorage.setItem(K,JSON.stringify(S))}catch(e){}}
 function $(s){return document.querySelector(s)}
-function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
+function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]})}
 function fm(n){return new Intl.NumberFormat("es-AR",{style:"currency",currency:"ARS"}).format(n)}
 function num(t){t=String(t).replace(/[$\s]/g,"");if(t.indexOf(",")>-1)t=t.replace(/\./g,"").replace(",",".");var n=parseFloat(t);return isFinite(n)&&n>=0?n:0}
 function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,6)}
@@ -143,16 +145,48 @@ function form(){
  var c=S.clientes.filter(function(x){return x.id===editId})[0]||{};
  return"<div class=card><b>"+(editId?"Editar cliente":"Nuevo cliente")+"</b><label for=f-n>Nombre del local o dueño</label><input id=f-n value='"+esc(c.nombre)+"'><label for=f-d>Dirección y altura</label><input id=f-d value='"+esc(c.direccion)+"'><label for=f-dia>Día de visita</label><select id=f-dia>"+DIAS.slice(1,6).map(function(d){return"<option value="+d+(d===(c.dia||dia)?" selected":"")+">"+cap(d)+"</option>"}).join("")+"</select><div class=two><div><label for=f-h>Horario</label><input id=f-h value='"+esc(c.horario)+"'></div><div><label for=f-t>Teléfono</label><input id=f-t type=tel value='"+esc(c.telefono)+"'></div></div><label for=f-l>Ubicación (opcional)</label><input id=f-l placeholder='-34.0971, -59.0282' value='"+(hasC(c)?c.lat+", "+c.lon:"")+"'><p class=hint>Dejalo vacío y la app busca la dirección sola al guardar. También podés tocar el botón parado frente al local.</p><div class=row><button data-a=loc>Usar mi ubicación actual</button></div><div class=row><button class=p data-a=guardar>Guardar cliente</button><button data-a=cancelar>Cancelar</button></div></div>"}
 
-function vCalc(){
- var o="<h1>Calculadora</h1><div class=card><b>Productos</b>";
- C.lines.forEach(function(l,i){o+="<div class=two><div><label>Precio $</label><input inputmode=decimal data-f=p data-i="+i+" value='"+esc(l.p)+"'></div><div><label>Cantidad</label><input inputmode=decimal data-f=c data-i="+i+" value='"+esc(l.c)+"'></div></div>"});
- o+="<div class=row><button data-a=addl>Agregar producto</button>"+(C.lines.length>1?"<button data-a=dell>Quitar último</button>":"")+"</div></div>";
- o+="<div class=card><div class=two><div><label>Descuento %</label><input inputmode=decimal data-f=d value='"+esc(C.d)+"'></div><div><label>Comisión %</label><input inputmode=decimal data-f=m value='"+esc(C.m)+"'></div></div></div><div class=card id=out></div>";
+function D(){if(!S.draft)S.draft={items:[],d:"",m:String(S.comPct||5),cli:""};return S.draft}
+function money(n){return Math.round(n*100)/100}
+function pedTot(){var d=D(),sub=0;d.items.forEach(function(l){sub+=num(l.precio)*num(l.cant)});var de=Math.min(num(d.d),100),desc=sub*de/100,tot=sub-desc;return{sub:money(sub),desc:money(desc),tot:money(tot),com:money(tot*num(d.m)/100)}}
+function pedOut(){var e=$("#pout");if(!e)return;var t=pedTot();e.innerHTML="<div class=res><span>Subtotal</span><span>"+fm(t.sub)+"</span></div><div class=res><span>Descuento</span><span>− "+fm(t.desc)+"</span></div><div class='res big'><span>Total</span><span>"+fm(t.tot)+"</span></div><div class=res><span>Tu comisión</span><span>"+fm(t.com)+"</span></div>"}
+function copiar(t){if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(t).then(function(){toast("Copiado.")},function(){toast("No se pudo copiar. Mantené apretado el texto para copiarlo.")});else toast("No se pudo copiar. Mantené apretado el texto para copiarlo.")}
+function findCli(t){var n=norm(t).trim();if(!n)return null;return S.clientes.filter(function(c){return norm(c.nombre).trim()===n||norm(c.nombre+" — "+c.direccion).trim()===n||norm(c.nombre+" "+c.direccion).trim()===n})[0]||null}
+function armarMsg(){var d=D(),L=d.items.map(function(l){var q=String(l.cant).trim()||"1";return q+" "+String(l.nom).trim()+(l.cod?" cod"+l.cod:"")}).join("\n"),t=(d.cli||"").trim(),c=findCli(t);return L+"\n\n"+(c?c.nombre+"\n"+c.direccion+"\nhorario: "+(c.horario||""):t)}
+function pedBus(){
+ if(!window.pbq)return"";
+ if(!P)return"<p class=hint>Cargando precios...</p>";
+ var toks=norm(window.pbq).trim().split(/\s+/),map={},ord=[];
+ P.productos.forEach(function(p){for(var i=0;i<toks.length;i++)if(p[4].indexOf(toks[i])<0)return;var k=p[0]+"|"+p[1].toLowerCase();if(!map[k]){map[k]={cod:p[0],nom:p[1],pr:[]};ord.push(map[k])}map[k].pr.push([p[3],p[2]])});
+ if(!ord.length)return"<p class=hint>No se encontraron productos.</p>";
+ if(toks.length===1&&/^\d+$/.test(toks[0]))ord.sort(function(a,b){return(b.cod===toks[0])-(a.cod===toks[0])});
+ return ord.slice(0,8).map(function(x){return"<div class=card><b>"+esc(x.nom)+"</b><span class=hint style='display:block'>Código "+esc(x.cod)+"</span><div class=row>"+x.pr.map(function(r){return"<button data-a=addp data-cod='"+esc(x.cod)+"' data-li="+r[0]+">"+esc(P.listas[r[0]].nombre+" ("+P.listas[r[0]].iva+") "+fm(r[1]))+"</button>"}).join("")+"</div></div>"}).join("")}
+function telNorm(r){var d=String(r||"").replace(/\D/g,"");if(!d)return"";d=d.replace(/^00/,"");
+ if(d.indexOf("549")===0)return d;if(d.indexOf("54")===0)return"549"+d.slice(2);
+ d=d.replace(/^0/,"");
+ if(d.length===12&&d.substr(4,2)==="15")d=d.slice(0,4)+d.slice(6);
+ else if(d.length===12&&d.substr(2,2)==="15")d=d.slice(0,2)+d.slice(4);
+ else if(d.length===11&&d.substr(3,2)==="15")d=d.slice(0,3)+d.slice(5);
+ return"549"+d}
+function waUrl(t){var n=telNorm(S.jefaTel);return"https://wa.me/"+n+"?text="+encodeURIComponent(t||"")}
+function jprev(){var n=telNorm(S.jefaTel);return n?"Se envía a +"+n+". Si no es tu jefa, revisá el número.":"Sin número, WhatsApp te va a pedir elegir a quién mandarlo."}
+function jefaCard(){return"<label for=jtel>WhatsApp de tu jefa</label><input id=jtel inputmode=tel placeholder='Ej: 3487123456' value='"+esc(S.jefaTel||"")+"'><p class=hint id=jprev>"+jprev()+"</p><p class=hint>Escribilo con el código de área, sin 0 y sin 15.</p>"}
+function vPed(){
+ if(S.ultimo)return"<h1>Pedido</h1><div class=card><b>Venta guardada</b><p class=hint>Mensaje para tu jefa:</p><textarea id=msg rows=9 readonly>"+esc(S.ultimo)+"</textarea><a id=wabtn class='btn p' style='display:block;margin-top:10px' href='"+waUrl(S.ultimo)+"' target=_blank rel=noopener>Enviar pedido por WhatsApp</a><div class=row><button data-a=copmsg>Copiar mensaje</button></div>"+(telNorm(S.jefaTel)?"":jefaCard())+"</div><button class=w data-a=nuevo_ped>Nuevo pedido</button>";
+ var d=D(),o="<h1>Pedido</h1><label for=pbq>Agregar producto (código o nombre)</label><input id=pbq inputmode=search autocomplete=off placeholder='Ej: 1957 o bolsa polip' value='"+esc(window.pbq||"")+"'><div id=pbus>"+pedBus()+"</div>";
+ o+=d.items.length?d.items.map(function(l,i){return"<div class=card>"+(l.cod?"<b>"+esc(l.nom)+"</b><span class=hint style='display:block'>Código "+esc(l.cod)+" · "+esc(l.lista)+"</span>":"<label>Nombre del producto</label><input data-f=nom data-i="+i+" value='"+esc(l.nom)+"'>")+"<div class=two><div><label>Cantidad</label><input inputmode=decimal data-f=cant data-i="+i+" value='"+esc(l.cant)+"'></div><div><label>Precio $</label><input inputmode=decimal data-f=precio data-i="+i+" value='"+esc(l.precio)+"'></div></div><div class=row><button class=dg data-a=delp data-i="+i+">Quitar</button></div></div>"}).join(""):"<p class=empty>Todavía no agregaste productos.</p>";
+ o+="<div class=row><button data-a=manual>Agregar producto manual</button></div>";
+ o+="<div class=card><div class=two><div><label>Descuento %</label><input inputmode=decimal data-f=d value='"+esc(d.d)+"'></div><div><label>Comisión %</label><input inputmode=decimal data-f=m value='"+esc(d.m)+"'></div></div><div id=pout></div></div>";
+ o+="<label for=pcli>¿Para quién es este pedido?</label><input id=pcli list=pcl autocomplete=off placeholder='Ej: susana dorrego 471' value='"+esc(d.cli)+"'><datalist id=pcl>"+S.clientes.map(function(c){return"<option value='"+esc(c.nombre+" — "+c.direccion)+"'>"}).join("")+"</datalist><p class=hint>Si elegís un cliente de tu lista, el mensaje lleva su dirección y horario solos.</p>";
+ o+="<details"+(telNorm(S.jefaTel)?"":" open")+"><summary>Número de tu jefa (para WhatsApp)</summary>"+jefaCard()+"</details>";
+ o+="<button class='p w' data-a=guardarv style='margin-top:12px'>Guardar venta y armar mensaje</button><button class=w data-a=vaciarp style='margin-top:8px'>Vaciar pedido</button>";
  return o}
-function calcOut(){
- var sub=0;C.lines.forEach(function(l){sub+=num(l.p)*num(l.c)});
- var d=Math.min(num(C.d),100),desc=sub*d/100,fin=sub-desc,com=fin*num(C.m)/100;
- var e=$("#out");if(e)e.innerHTML="<div class=res><span>Subtotal</span><span>"+fm(sub)+"</span></div><div class=res><span>Descuento</span><span>− "+fm(desc)+"</span></div><div class='res big'><span>Total</span><span>"+fm(fin)+"</span></div><div class=res><span>Tu comisión</span><span>"+fm(com)+"</span></div>"}
+function mkey(f){var d=new Date(f);return d.getFullYear()*12+d.getMonth()}
+function vVen(){
+ var L=S.ventas.filter(function(v){return mkey(v.fecha)===VM}),tot=0,com=0;L.forEach(function(v){tot+=v.total;com+=v.comision});
+ var lab=new Date(Math.floor(VM/12),VM%12,1).toLocaleDateString("es-AR",{month:"long",year:"numeric"});
+ var o="<h1>Ventas</h1><div class=sum><button data-a=mprev>◀</button><b style='color:var(--ink);text-transform:capitalize'>"+lab+"</b><button data-a=mnext>▶</button></div><div class=card><div class=res><span>Ventas realizadas</span><span>"+L.length+"</span></div><div class=res><span>Total vendido</span><span>"+fm(money(tot))+"</span></div><div class='res big'><span>Tu comisión</span><span>"+fm(money(com))+"</span></div></div>";
+ if(!L.length)return o+"<p class=empty>Todavía no hay ventas este mes.</p>";
+ return o+L.slice().reverse().map(function(v){return"<div class=card><b>"+esc(v.cliente)+"</b><span class=hint style='display:block'>"+new Date(v.fecha).toLocaleDateString("es-AR")+" · "+fm(v.total)+" · comisión "+fm(v.comision)+"</span><div class=row><button data-a=vermsg data-id="+v.id+">"+(vsel===v.id?"Ocultar mensaje":"Ver mensaje")+"</button><button class=dg data-a=delv data-id="+v.id+">Borrar</button></div>"+(vsel===v.id?"<textarea rows=7 readonly>"+esc(v.texto)+"</textarea><div class=row><a class='btn p' href='"+waUrl(v.texto)+"' target=_blank rel=noopener>Enviar por WhatsApp</a><button data-a=copv data-id="+v.id+">Copiar</button></div>":"")+"</div>"}).join("")}
 
 function vPap(){
  var o="<h1>Papelera</h1>";
@@ -189,9 +223,9 @@ function preRes(){
   o+="<div class=card><b>"+esc(x.nom)+"</b><span style='display:block;color:var(--mut);font-size:14px'>Código "+esc(x.cod)+"</span>"+x.pr.map(function(r){return"<div class=pr><span>"+esc(etq(r[0]))+"</span><b>"+fm(r[1])+"</b></div>"}).join("")+"</div>"});
  return o}
 function render(){
- $("#view").innerHTML={hoy:vHoy,cli:vCli,pre:vPre,calc:vCalc,pap:vPap}[tab]();
+ $("#view").innerHTML={hoy:vHoy,cli:vCli,pre:vPre,ped:vPed,ven:vVen,pap:vPap}[tab]();
  document.querySelectorAll("nav button").forEach(function(b){b.classList.toggle("on",b.dataset.tab===tab)});
- if(tab==="calc")calcOut()}
+ if(tab==="ped")pedOut()}
 function take(id){var i=S.clientes.findIndex(function(c){return c.id===id});return i<0?null:S.clientes.splice(i,1)[0]}
 function mark(id,k){var h=hoyState();["v","s"].forEach(function(x){var i=h[x].indexOf(id);if(i>-1)h[x].splice(i,1)});if(k)h[k].push(id);save();render()}
 
@@ -212,8 +246,26 @@ document.addEventListener("click",function(e){
  else if(a==="rest"){var i=S.papelera.findIndex(function(c){return c.id===id});if(i>-1){var r=S.papelera.splice(i,1)[0];delete r.eliminado;S.clientes.push(r);save();render();toast("Cliente restaurado.")}}
  else if(a==="fin"){S.papelera=S.papelera.filter(function(c){return c.id!==id});save();render()}
  else if(a==="vaciar"){if(confirm("¿Borrar todo lo que hay en la papelera?")){S.papelera=[];save();render()}}
- else if(a==="addl"){C.lines.push({p:"",c:""});render()}
- else if(a==="dell"){C.lines.pop();render()}
+ else if(a==="addp"){var li=+b.dataset.li,cod=b.dataset.cod,pp=P.productos.filter(function(x){return x[0]===cod&&x[3]===li})[0],dd=D();
+  if(pp){var ex=dd.items.filter(function(l){return l.cod===cod&&l.lista===P.listas[li].nombre})[0];
+   if(ex)ex.cant=String(num(ex.cant)+1);else dd.items.push({cod:cod,nom:pp[1],precio:pp[2],cant:"1",lista:P.listas[li].nombre});
+   window.pbq="";save();render();toast("Agregado al pedido.")}}
+ else if(a==="manual"){D().items.push({cod:"",nom:"",precio:"",cant:"1",lista:"manual"});save();render()}
+ else if(a==="delp"){D().items.splice(+b.dataset.i,1);save();render()}
+ else if(a==="vaciarp"){if(confirm("¿Vaciar todo el pedido?")){S.draft=null;save();render()}}
+ else if(a==="guardarv"){var dg=D(),it=dg.items.filter(function(l){return num(l.cant)>0&&String(l.nom).trim()});
+  if(!it.length){toast("Agregá al menos un producto con cantidad.");return}
+  if(!String(dg.cli).trim()){toast("Escribí para quién es el pedido.");return}
+  dg.items=it;var tt=pedTot(),cc=findCli(dg.cli),msg=armarMsg();
+  S.ventas.push({id:uid(),fecha:new Date().toISOString(),cliente:cc?cc.nombre:String(dg.cli).trim(),items:it,total:tt.tot,comPct:num(dg.m),comision:tt.com,texto:msg});
+  S.comPct=num(dg.m);S.ultimo=msg;S.draft=null;save();render()}
+ else if(a==="nuevo_ped"){S.ultimo=null;save();render()}
+ else if(a==="copmsg")copiar(S.ultimo)
+ else if(a==="mprev"){VM--;render()}
+ else if(a==="mnext"){VM++;render()}
+ else if(a==="vermsg"){vsel=vsel===id?null:id;render()}
+ else if(a==="copv"){var vv=S.ventas.filter(function(x){return x.id===id})[0];if(vv)copiar(vv.texto)}
+ else if(a==="delv"){if(confirm("¿Borrar esta venta?")){S.ventas=S.ventas.filter(function(x){return x.id!==id});save();render()}}
  else if(a==="import"){
   try{var arr=JSON.parse($("#imp").value);if(!Array.isArray(arr))throw 0;var k=0;
    arr.forEach(function(x){if(!x||!x.nombre)return;var lat=parseFloat(x.latitud),lon=parseFloat(x.longitud);
@@ -229,7 +281,10 @@ document.addEventListener("input",function(e){
  var t=e.target;
  if(t.id==="q"){q=t.value;$("#lista").innerHTML=lista()}
  else if(t.id==="pq"){window.pq=t.value;$("#pres").innerHTML=preRes()}
- else if(t.dataset.f){var f=t.dataset.f;if(f==="p"||f==="c")C.lines[+t.dataset.i][f]=t.value;else C[f]=t.value;calcOut()}
+ else if(t.id==="pbq"){window.pbq=t.value;$("#pbus").innerHTML=pedBus()}
+ else if(t.id==="jtel"){S.jefaTel=t.value;save();var jp=$("#jprev");if(jp)jp.textContent=jprev();var wb=$("#wabtn");if(wb)wb.href=waUrl(S.ultimo||"")}
+ else if(t.id==="pcli"){D().cli=t.value;save()}
+ else if(t.dataset.f){var f=t.dataset.f,dd=D();if(t.dataset.i!==undefined)dd.items[+t.dataset.i][f]=t.value;else dd[f]=t.value;save();pedOut()}
 });
 loadPrecios();
 render();
