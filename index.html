@@ -115,6 +115,23 @@ async function guardarCliente(){
  c.nombre=n;c.direccion=d;c.dia=$("#f-dia").value;c.horario=$("#f-h").value.trim();c.telefono=$("#f-t").value.trim();
  if(p){c.lat=p[0];c.lon=p[1]}else{delete c.lat;delete c.lon}
  save();showForm=false;editId=null;render();toast(msg)}
+function importar(txt){
+ try{var arr=JSON.parse(txt);if(!Array.isArray(arr))throw 0;var k=0,rp=0;
+  arr.forEach(function(x){if(!x||!x.nombre)return;
+   var nom=String(x.nombre).trim(),dir=String(x.direccion||"").trim();
+   if(S.clientes.some(function(c){return norm(c.nombre)===norm(nom)&&norm(c.direccion)===norm(dir)})){rp++;return}
+   var lat=parseFloat(x.latitud),lon=parseFloat(x.longitud);
+   var c={id:uid(),nombre:nom,direccion:dir,dia:normDia(x.dia)||"lunes",horario:x.horario||"",telefono:x.telefono||""};
+   if(isFinite(lat)&&isFinite(lon)){c.lat=lat;c.lon=lon}S.clientes.push(c);k++});
+  save();var t=$("#imp");if(t)t.value="";render();toast("Se importaron "+k+" clientes"+(rp?" ("+rp+" ya estaban)":"")+".")}
+ catch(err){toast("No se pudo leer el contenido. Tiene que ser el archivo .json completo.")}}
+var geoBusy=false;
+async function geoall(){
+ if(geoBusy)return;var L=S.clientes.filter(function(c){return!hasC(c)});if(!L.length)return;geoBusy=true;var ok=0;
+ for(var i=0;i<L.length;i++){toast("Buscando ubicaciones: "+(i+1)+" de "+L.length+"...");
+  try{var g=await geocode(L[i].direccion);if(g){L[i].lat=g[0];L[i].lon=g[1];ok++;save()}}catch(e){}
+  await new Promise(function(r){setTimeout(r,1100)})}
+ geoBusy=false;render();toast("Listo: se encontró la ubicación de "+ok+" de "+L.length+" clientes.")}
 function vHoy(){
  var h=hoyState(),L=S.clientes.filter(function(c){return c.dia===dia});
  var pend=optim(L.filter(function(c){return h.v.indexOf(c.id)<0&&h.s.indexOf(c.id)<0}));
@@ -134,8 +151,10 @@ function stop(c,n,cls){
 function vCli(){
  var o="<h1>Clientes</h1>";
  if(showForm)o+=form();else o+="<button class='p w' data-a=nuevo>Agregar cliente</button>";
+ var sinU=S.clientes.filter(function(c){return!hasC(c)}).length;
+ if(sinU)o+="<div class=card><b>"+sinU+" cliente"+(sinU>1?"s":"")+" sin ubicación</b><p class=hint>Sin ubicación no entran en el orden de la ruta. La app busca las direcciones en el mapa de a una, tarda un segundo por cliente.</p><button class='p w' data-a=geoall>Buscar ubicaciones</button></div>";
  o+="<label for=q>Buscar por nombre o dirección</label><input id=q value='"+esc(q)+"'><div id=lista>"+lista()+"</div>";
- o+="<details><summary>Importar y respaldo</summary><p class=hint>Para traer tus clientes del programa en Python, abrí el archivo locales_preventa.json, copiá todo el texto y pegalo acá.</p><textarea id=imp rows=4 placeholder='Pegá acá el contenido del archivo'></textarea><div class=row><button class=p data-a=import>Importar clientes</button><button data-a=resp>Copiar respaldo</button></div></details>";
+ o+="<details><summary>Importar y respaldo</summary><label for=impf>Importar clientes desde un archivo .json</label><input id=impf type=file accept='.json,application/json'><p class=hint>También podés pegar el texto del archivo acá. Los clientes que ya existen no se repiten.</p><textarea id=imp rows=4 placeholder='Pegá acá el contenido del archivo'></textarea><div class=row><button class=p data-a=import>Importar clientes</button><button data-a=resp>Copiar respaldo</button></div></details>";
  return o}
 function lista(){
  var t=q.trim().toLowerCase(),L=S.clientes.filter(function(c){return!t||(c.nombre+" "+c.direccion).toLowerCase().indexOf(t)>-1});
@@ -266,13 +285,8 @@ document.addEventListener("click",function(e){
  else if(a==="vermsg"){vsel=vsel===id?null:id;render()}
  else if(a==="copv"){var vv=S.ventas.filter(function(x){return x.id===id})[0];if(vv)copiar(vv.texto)}
  else if(a==="delv"){if(confirm("¿Borrar esta venta?")){S.ventas=S.ventas.filter(function(x){return x.id!==id});save();render()}}
- else if(a==="import"){
-  try{var arr=JSON.parse($("#imp").value);if(!Array.isArray(arr))throw 0;var k=0;
-   arr.forEach(function(x){if(!x||!x.nombre)return;var lat=parseFloat(x.latitud),lon=parseFloat(x.longitud);
-    var c={id:uid(),nombre:String(x.nombre).trim(),direccion:String(x.direccion||"").trim(),dia:normDia(x.dia)||"lunes",horario:x.horario||"",telefono:x.telefono||""};
-    if(isFinite(lat)&&isFinite(lon)){c.lat=lat;c.lon=lon}S.clientes.push(c);k++});
-   save();$("#imp").value="";render();toast("Se importaron "+k+" clientes.")}
-  catch(err){toast("No se pudo leer el texto. Copiá el archivo completo, desde el primer corchete hasta el último.")}}
+ else if(a==="import")importar($("#imp").value)
+ else if(a==="geoall")geoall()
  else if(a==="resp"){var txt=JSON.stringify(S.clientes);
   if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(txt).then(function(){toast("Respaldo copiado. Pegalo en Notas para guardarlo.")},function(){$("#imp").value=txt;toast("Copialo desde el cuadro de texto.")});
   else{$("#imp").value=txt;toast("Copialo desde el cuadro de texto.")}}
@@ -286,6 +300,7 @@ document.addEventListener("input",function(e){
  else if(t.id==="pcli"){D().cli=t.value;save()}
  else if(t.dataset.f){var f=t.dataset.f,dd=D();if(t.dataset.i!==undefined)dd.items[+t.dataset.i][f]=t.value;else dd[f]=t.value;save();pedOut()}
 });
+document.addEventListener("change",function(e){var t=e.target;if(t.id==="impf"&&t.files&&t.files[0]){var r=new FileReader();r.onload=function(){importar(String(r.result))};r.readAsText(t.files[0]);t.value=""}});
 loadPrecios();
 render();
 </script>
