@@ -49,6 +49,10 @@ nav button.on{color:var(--acc);font-weight:700}
 #toast{position:fixed;left:16px;right:16px;bottom:calc(76px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:12px 14px;border-radius:10px;font-size:14px;display:none;z-index:5}
 details{margin-top:18px}summary{padding:8px 0;color:var(--acc)}
 .btn.p{background:var(--acc);color:var(--accT);border-color:var(--acc);font-weight:600}
+.est{display:inline-block;font-size:13px;font-weight:600;padding:2px 10px;border-radius:999px;margin-top:6px;border:1px solid}
+.e-ok{color:var(--ok);border-color:var(--ok)}
+.e-soon{color:var(--skip);border-color:var(--skip)}
+.e-closed{color:var(--bad);border-color:var(--bad)}
 .hint{font-size:13px;color:var(--mut);margin:6px 0 0}
 .pr{display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-top:1px solid var(--line);font-variant-numeric:tabular-nums}
 .pr span:first-child{color:var(--mut);font-size:13px}
@@ -133,7 +137,7 @@ async function geoall(){
   await new Promise(function(r){setTimeout(r,1100)})}
  geoBusy=false;render();toast("Listo: se encontró la ubicación de "+ok+" de "+L.length+" clientes.")}
 function vHoy(){
- var h=hoyState(),L=S.clientes.filter(function(c){return c.dia===dia});
+ lastSig=hoySig();var h=hoyState(),L=S.clientes.filter(function(c){return c.dia===dia});
  var pend=optim(L.filter(function(c){return h.v.indexOf(c.id)<0&&h.s.indexOf(c.id)<0}));
  var done=L.filter(function(c){return h.v.indexOf(c.id)>-1||h.s.indexOf(c.id)>-1});
  var o="<h1>Ruta de hoy</h1><div class=chips>"+DIAS.slice(1,6).map(function(d){return"<button class='chip"+(d===dia?" on":"")+"' data-a=dia data-id="+d+">"+cap(d.slice(0,3))+"</button>"}).join("")+"</div>";
@@ -144,9 +148,27 @@ function vHoy(){
  pend.forEach(function(c,i){o+=stop(c,i+1,"")});
  done.forEach(function(c){var v=h.v.indexOf(c.id)>-1;o+=stop(c,v?"✔":"–",v?"d":"s")});
  return o+"</ol>"}
+var SOON=20,lastSig="";
+function realDia(){return DIAS[new Date().getDay()]}
+function hh(m){m=m%1440;return Math.floor(m/60)+":"+("0"+m%60).slice(-2)}
+function horaMin(h){
+ var t=String(h||"").toLowerCase();if(!t.trim())return null;
+ var m=t.match(/(\d{1,2})(?:[:.](\d{2}))?\s*(?:a|-|–|hasta)\s*(\d{1,2})(?:[:.](\d{2}))?/);
+ if(!m){return/24\s*(hs|horas)/.test(t)?{a:0,b:1440}:null}
+ var a=+m[1]*60+(+m[2]||0),b=+m[3]*60+(+m[4]||0);if(b<=a)b+=1440;return{a:a,b:b}}
+function estado(c,nm){
+ var r=horaMin(c.horario);if(!r)return null;
+ if(nm==null){var n=new Date();nm=n.getHours()*60+n.getMinutes()}
+ if(r.a===0&&r.b===1440)return{t:"Abierto las 24 hs",cls:"e-ok"};
+ if(nm>=r.a&&nm<r.b)return{t:"Abierto hasta las "+hh(r.b),cls:"e-ok"};
+ if(nm<r.a){var d=r.a-nm;return d<=SOON?{t:"Abre pronto · "+hh(r.a),cls:"e-soon"}:{t:"Cerrado · abre a las "+hh(r.a),cls:"e-closed"}}
+ return{t:"Ya cerró",cls:"e-closed"}}
+function badge(c){if(dia!==realDia())return"";var e=estado(c);return e?"<span class='est "+e.cls+"'>"+esc(e.t)+"</span>":""}
+function hoySig(){if(dia!==realDia())return"";return S.clientes.filter(function(c){return c.dia===dia}).map(function(c){var e=estado(c);return e?e.t:""}).join("|")}
+setInterval(function(){if(tab==="hoy"&&hoySig()!==lastSig)render()},60000);
 function stop(c,n,cls){
  var acts=cls?"<button data-a=undo data-id="+c.id+">Volver a pendiente</button>":"<button class=ok data-a=ok data-id="+c.id+">Visitado</button><button class=sk data-a=skip data-id="+c.id+">Saltar</button>";
- return"<li class='stop "+cls+"'><span class=n>"+n+"</span><div class=b><b>"+esc(c.nombre)+"</b><span class=t>"+esc(c.direccion)+"</span>"+(c.horario?"<span class=t>Horario: "+esc(c.horario)+"</span>":"")+"<div class=row>"+acts+"<a class=btn href='"+mapUrl(c)+"' target=_blank rel=noopener>Mapa</a>"+(c.telefono?"<a class=btn href='tel:"+esc(c.telefono.replace(/[^\d+]/g,""))+"'>Llamar</a>":"")+"</div></div></li>"}
+ return"<li class='stop "+cls+"'><span class=n>"+n+"</span><div class=b><b>"+esc(c.nombre)+"</b><span class=t>"+esc(c.direccion)+"</span>"+(c.horario?"<span class=t>Horario: "+esc(c.horario)+"</span>":"")+(cls?"":badge(c))+"<div class=row>"+acts+"<a class=btn href='"+mapUrl(c)+"' target=_blank rel=noopener>Mapa</a>"+(c.telefono?"<a class=btn href='tel:"+esc(c.telefono.replace(/[^\d+]/g,""))+"'>Llamar</a>":"")+"</div></div></li>"}
 
 function vCli(){
  var o="<h1>Clientes</h1>";
