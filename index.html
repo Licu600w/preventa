@@ -43,12 +43,16 @@ input,select,textarea{width:100%;font:inherit;font-size:16px;padding:11px;border
 .res.big{font-size:20px;font-weight:700;border-top:1px solid var(--line);margin-top:6px;padding-top:10px}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .empty{color:var(--mut);text-align:center;padding:28px 8px}
-nav{position:fixed;left:0;right:0;bottom:0;display:flex;background:var(--card);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0px)}
+nav{z-index:20;position:fixed;left:0;right:0;bottom:0;display:flex;background:var(--card);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0px)}
 nav button{flex:1;border:0;border-radius:0;background:none;padding:14px 0;font-size:12px;color:var(--mut)}
 nav button.on{color:var(--acc);font-weight:700}
-#toast{position:fixed;left:16px;right:16px;bottom:calc(76px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:12px 14px;border-radius:10px;font-size:14px;display:none;z-index:5}
+#toast{position:fixed;left:16px;right:16px;bottom:calc(76px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:12px 14px;border-radius:10px;font-size:14px;display:none;z-index:30}
 details{margin-top:18px}summary{padding:8px 0;color:var(--acc)}
 .btn.p{background:var(--acc);color:var(--accT);border-color:var(--acc);font-weight:600}
+#mapa{position:relative;z-index:0;isolation:isolate;height:62vh;min-height:320px;border-radius:12px;border:1px solid var(--line);overflow:hidden;margin-top:10px}
+.mk{width:30px;height:30px;border-radius:50%;background:#0a5c7a;color:#fff;font:700 13px system-ui,sans-serif;display:flex;align-items:center;justify-content:center;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.45)}
+.mk.d{background:#2e7d4f}.mk.s{background:#a8620a}
+.leaflet-popup-content{color:#14202b;font-size:14px}
 .est{display:inline-block;font-size:13px;font-weight:600;padding:2px 10px;border-radius:999px;margin-top:6px;border:1px solid}
 .e-ok{color:var(--ok);border-color:var(--ok)}
 .e-soon{color:var(--skip);border-color:var(--skip)}
@@ -88,11 +92,13 @@ function normDia(d){d=String(d||"").trim().toLowerCase();return d==="miércoles"
 function cap(s){return s.charAt(0).toUpperCase()+s.slice(1)}
 function hasC(c){return typeof c.lat==="number"&&typeof c.lon==="number"}
 function hav(a,b){var R=6371000,r=Math.PI/180,dl=(b[0]-a[0])*r,dn=(b[1]-a[1])*r;var x=Math.sin(dl/2)*Math.sin(dl/2)+Math.cos(a[0]*r)*Math.cos(b[0]*r)*Math.sin(dn/2)*Math.sin(dn/2);return 2*R*Math.asin(Math.sqrt(x))}
-function total(o,r){var t=0,p=o;r.forEach(function(c){var x=[c.lat,c.lon];t+=hav(p,x);p=x});return t}
+function dw(a,b){var k=111320,dy=Math.abs(b[0]-a[0])*k,dx=Math.abs(b[1]-a[1])*k*Math.cos(a[0]*Math.PI/180);return dx+dy}
+function fdist(m){return m>=1000?(m/1000).toFixed(1).replace(".",",")+" km":(Math.max(10,Math.round(m/10)*10))+" m"}
+function total(o,r){var t=0,p=o;r.forEach(function(c){var x=[c.lat,c.lon];t+=dw(p,x);p=x});return t}
 function optim(items){
  var ci=items.filter(hasC),rest=items.filter(function(c){return!hasC(c)}),o=S.pos||BASE,r=[],p=o,pool=ci.slice();
- while(pool.length){var bi=0,bd=1e18;pool.forEach(function(c,i){var d=hav(p,[c.lat,c.lon]);if(d<bd){bd=d;bi=i}});var c=pool.splice(bi,1)[0];r.push(c);p=[c.lat,c.lon]}
- var imp=r.length>=3,best=total(o,r);
+ while(pool.length){var bi=0,bd=1e18;pool.forEach(function(c,i){var d=dw(p,[c.lat,c.lon]);if(d<bd){bd=d;bi=i}});var c=pool.splice(bi,1)[0];r.push(c);p=[c.lat,c.lon]}
+ var imp=r.length>=3&&S.modo==="ruta",best=total(o,r);
  while(imp){imp=false;
   for(var i=0;i<r.length-1&&!imp;i++)for(var j=i+1;j<r.length&&!imp;j++){
    var n=r.slice();var seg=n.slice(i,j+1).reverse();Array.prototype.splice.apply(n,[i,j-i+1].concat(seg));
@@ -136,16 +142,45 @@ async function geoall(){
   try{var g=await geocode(L[i].direccion);if(g){L[i].lat=g[0];L[i].lon=g[1];ok++;save()}}catch(e){}
   await new Promise(function(r){setTimeout(r,1100)})}
  geoBusy=false;render();toast("Listo: se encontró la ubicación de "+ok+" de "+L.length+" clientes.")}
+var MAP=null,MST=null,hoyVista="lista";
+function ctrl(){return"<div class=chips style='margin-top:8px'><button class='chip"+(hoyVista==="lista"?" on":"")+"' data-a=vista data-id=lista>Lista</button><button class='chip"+(hoyVista==="mapa"?" on":"")+"' data-a=vista data-id=mapa>Mapa</button><button class='chip"+(S.modo!=="ruta"?" on":"")+"' style='margin-left:10px' data-a=modo data-id=cerca>Más cercano</button><button class='chip"+(S.modo==="ruta"?" on":"")+"' data-a=modo data-id=ruta>Optimizada</button></div>"}
+function loadLeaflet(cb){
+ if(window.L&&window.L.map){cb();return}
+ if(!document.getElementById("lfcss")){var l=document.createElement("link");l.id="lfcss";l.rel="stylesheet";l.href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css";document.head.appendChild(l)}
+ var sc=document.getElementById("lfjs");
+ if(!sc){sc=document.createElement("script");sc.id="lfjs";sc.src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js";document.head.appendChild(sc)}
+ sc.addEventListener("load",cb);
+ sc.addEventListener("error",function(){var m=$("#mapa");if(m)m.innerHTML="<p class=empty>No se pudo cargar el mapa. Revisá tu conexión a internet.</p>"})}
+function popMk(c,cls){
+ var e=dia===realDia()?estado(c):null;
+ return"<b>"+esc(c.nombre)+"</b><br>"+esc(c.direccion)+(c.horario?"<br>Horario: "+esc(c.horario):"")+(e?"<br>"+esc(e.t):"")+"<div class=row style='margin-top:8px'>"+(cls?"<button data-a=undo data-id="+c.id+">Volver a pendiente</button>":"<button class=ok data-a=ok data-id="+c.id+">Visitado</button><button class=sk data-a=skip data-id="+c.id+">Saltar</button>")+"<a class=btn href='"+mapUrl(c)+"' target=_blank rel=noopener>Cómo llegar</a></div>"}
+function initMapa(){
+ if(!$("#mapa"))return;
+ loadLeaflet(function(){
+  var el=$("#mapa"),Lf=window.L;if(!el||MAP||!Lf)return;
+  var h=hoyState(),all=S.clientes.filter(function(c){return c.dia===dia}),
+   pend=optim(all.filter(function(c){return h.v.indexOf(c.id)<0&&h.s.indexOf(c.id)<0})),
+   done=all.filter(function(c){return h.v.indexOf(c.id)>-1||h.s.indexOf(c.id)>-1}),pts=[];
+  MAP=Lf.map(el).setView(S.pos||BASE,14);
+  Lf.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"© OpenStreetMap"}).addTo(MAP);
+  function mk(c,txt,cls){if(!hasC(c))return;
+   Lf.marker([c.lat,c.lon],{icon:Lf.divIcon({className:"",html:"<div class='mk "+cls+"'>"+txt+"</div>",iconSize:[30,30],iconAnchor:[15,15]})}).addTo(MAP).bindPopup(popMk(c,cls));pts.push([c.lat,c.lon])}
+  pend.forEach(function(c,i){mk(c,String(i+1),"")});
+  done.forEach(function(c){var v=h.v.indexOf(c.id)>-1;mk(c,v?"✔":"–",v?"d":"s")});
+  if(S.pos){Lf.circleMarker(S.pos,{radius:9,color:"#fff",weight:3,fillColor:"#1a73e8",fillOpacity:1}).addTo(MAP).bindTooltip("Estás acá");pts.push(S.pos)}
+  if(MST)MAP.setView(MST.c,MST.z);else if(pts.length)MAP.fitBounds(pts,{padding:[30,30],maxZoom:17});
+  setTimeout(function(){if(MAP)MAP.invalidateSize()},60)})}
 function vHoy(){
  lastSig=hoySig();var h=hoyState(),L=S.clientes.filter(function(c){return c.dia===dia});
  var pend=optim(L.filter(function(c){return h.v.indexOf(c.id)<0&&h.s.indexOf(c.id)<0}));
  var done=L.filter(function(c){return h.v.indexOf(c.id)>-1||h.s.indexOf(c.id)>-1});
- var o="<h1>Ruta de hoy</h1><div class=chips>"+DIAS.slice(1,6).map(function(d){return"<button class='chip"+(d===dia?" on":"")+"' data-a=dia data-id="+d+">"+cap(d.slice(0,3))+"</button>"}).join("")+"</div>";
+ var o="<h1>Ruta de hoy</h1><div class=chips>"+DIAS.slice(1,6).map(function(d){return"<button class='chip"+(d===dia?" on":"")+"' data-a=dia data-id="+d+">"+cap(d.slice(0,3))+"</button>"}).join("")+"</div>"+ctrl();
  o+="<div class=sum><span>"+(L.length?"Quedan "+pend.length+" de "+L.length:"Sin clientes este día")+"</span><button data-a=ubic>"+(S.pos?"Ubicación actualizada":"Usar mi ubicación")+"</button></div>";
  if(!L.length)return o+"<p class=empty>Todavía no hay clientes para el "+dia+". Agregalos en la pestaña Clientes.</p>";
+ if(hoyVista==="mapa"){var sinU=L.filter(function(c){return!hasC(c)}).length;return o+"<div id=mapa></div><p class=hint>Azul: pendientes · Verde: visitados · Naranja: salteados. Tocá un número para ver el cliente.</p>"+(sinU?"<p class=hint>"+sinU+" cliente"+(sinU>1?"s":"")+" de este día no aparece"+(sinU>1?"n":"")+" en el mapa porque no tiene ubicación.</p>":"")}
  if(!pend.length)o+="<p class=empty>Terminaste todas las visitas de este día.</p>";
  o+="<ol>";
- pend.forEach(function(c,i){o+=stop(c,i+1,"")});
+ pend.forEach(function(c,i){o+=stop(c,i+1,"",S.pos&&hasC(c)?dw(S.pos,[c.lat,c.lon]):null)});
  done.forEach(function(c){var v=h.v.indexOf(c.id)>-1;o+=stop(c,v?"✔":"–",v?"d":"s")});
  return o+"</ol>"}
 var SOON=20,lastSig="";
@@ -165,10 +200,10 @@ function estado(c,nm){
  return{t:"Ya cerró",cls:"e-closed"}}
 function badge(c){if(dia!==realDia())return"";var e=estado(c);return e?"<span class='est "+e.cls+"'>"+esc(e.t)+"</span>":""}
 function hoySig(){if(dia!==realDia())return"";return S.clientes.filter(function(c){return c.dia===dia}).map(function(c){var e=estado(c);return e?e.t:""}).join("|")}
-setInterval(function(){if(tab==="hoy"&&hoySig()!==lastSig)render()},60000);
-function stop(c,n,cls){
+setInterval(function(){if(tab==="hoy"&&hoyVista==="lista"&&hoySig()!==lastSig)render()},60000);
+function stop(c,n,cls,dist){
  var acts=cls?"<button data-a=undo data-id="+c.id+">Volver a pendiente</button>":"<button class=ok data-a=ok data-id="+c.id+">Visitado</button><button class=sk data-a=skip data-id="+c.id+">Saltar</button>";
- return"<li class='stop "+cls+"'><span class=n>"+n+"</span><div class=b><b>"+esc(c.nombre)+"</b><span class=t>"+esc(c.direccion)+"</span>"+(c.horario?"<span class=t>Horario: "+esc(c.horario)+"</span>":"")+(cls?"":badge(c))+"<div class=row>"+acts+"<a class=btn href='"+mapUrl(c)+"' target=_blank rel=noopener>Mapa</a>"+(c.telefono?"<a class=btn href='tel:"+esc(c.telefono.replace(/[^\d+]/g,""))+"'>Llamar</a>":"")+"</div></div></li>"}
+ return"<li class='stop "+cls+"'><span class=n>"+n+"</span><div class=b><b>"+esc(c.nombre)+"</b><span class=t>"+esc(c.direccion)+"</span>"+(dist!=null?"<span class=t>A unos "+fdist(dist)+" caminando</span>":"")+(c.horario?"<span class=t>Horario: "+esc(c.horario)+"</span>":"")+(cls?"":badge(c))+"<div class=row>"+acts+"<a class=btn href='"+mapUrl(c)+"' target=_blank rel=noopener>Mapa</a>"+(c.telefono?"<a class=btn href='tel:"+esc(c.telefono.replace(/[^\d+]/g,""))+"'>Llamar</a>":"")+"</div></div></li>"}
 
 function vCli(){
  var o="<h1>Clientes</h1>";
@@ -264,17 +299,21 @@ function preRes(){
   o+="<div class=card><b>"+esc(x.nom)+"</b><span style='display:block;color:var(--mut);font-size:14px'>Código "+esc(x.cod)+"</span>"+x.pr.map(function(r){return"<div class=pr><span>"+esc(etq(r[0]))+"</span><b>"+fm(r[1])+"</b></div>"}).join("")+"</div>"});
  return o}
 function render(){
+ if(MAP){try{MST={c:MAP.getCenter(),z:MAP.getZoom()};MAP.remove()}catch(e){}MAP=null}
  $("#view").innerHTML={hoy:vHoy,cli:vCli,pre:vPre,ped:vPed,ven:vVen,pap:vPap}[tab]();
  document.querySelectorAll("nav button").forEach(function(b){b.classList.toggle("on",b.dataset.tab===tab)});
- if(tab==="ped")pedOut()}
+ if(tab==="ped")pedOut();
+ if(tab==="hoy"&&hoyVista==="mapa")initMapa()}
 function take(id){var i=S.clientes.findIndex(function(c){return c.id===id});return i<0?null:S.clientes.splice(i,1)[0]}
-function mark(id,k){var h=hoyState();["v","s"].forEach(function(x){var i=h[x].indexOf(id);if(i>-1)h[x].splice(i,1)});if(k)h[k].push(id);save();render()}
+function mark(id,k){var h=hoyState();["v","s"].forEach(function(x){var i=h[x].indexOf(id);if(i>-1)h[x].splice(i,1)});if(k)h[k].push(id);if(k==="v"){var cv=S.clientes.filter(function(x){return x.id===id})[0];if(cv&&hasC(cv)){S.pos=[cv.lat,cv.lon];MST=null}}save();render()}
 
 document.addEventListener("click",function(e){
  var t=e.target.closest("[data-tab]");if(t){tab=t.dataset.tab;render();window.scrollTo(0,0);return}
  var b=e.target.closest("[data-a]");if(!b)return;var a=b.dataset.a,id=b.dataset.id;
- if(a==="dia"){dia=id;render()}
- else if(a==="ubic")gps(function(p){S.pos=p;save();render();toast("Ruta recalculada desde tu ubicación.")})
+ if(a==="dia"){dia=id;MST=null;render()}
+ else if(a==="vista"){hoyVista=id;MST=null;render()}
+ else if(a==="modo"){S.modo=id;save();render()}
+ else if(a==="ubic")gps(function(p){S.pos=p;MST=null;save();render();toast("Ruta recalculada desde tu ubicación.")})
  else if(a==="ok")mark(id,"v")
  else if(a==="skip")mark(id,"s")
  else if(a==="undo")mark(id,null)
